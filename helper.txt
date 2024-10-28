@@ -1,0 +1,21 @@
+Here are some tips and some problems that could occur during setup and their possible fixes:
+
+ssh bad ownership:
+    1. Go to C:\Users\username.ssh
+    2. Right-click the config file
+    3. Properties -> Security -> Advanced -> Disable Inheritance -> Disable inheritance -> Remove all inherited permissions from this object -> Apply -> Yes -> Ok -> Ok
+
+
+vscode operation not permitted:
+    1. make sure you have permission to read/and write from/to the ssh config file
+
+
+Setup connection from outside the Uni-network:
+    - use a ProxyJump 
+    - your ssh-config file should look like this: 
+        Host auerkamp
+          HostName auerkamp
+          ProxyJump [info-account-id]@login-stud.informatik.uni-bonn.de
+          User [auerkamp-username]
+
+    -VsCode will ask you for two passwords. The first one is the password of your info-account. The second one is your auerkamp password.
