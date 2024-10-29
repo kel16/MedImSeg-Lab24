@@ -1,4 +1,4 @@
-n_filters_init: 8
+n_filters_init: 16
 depth: 4
 spatial_dims: 2
 in_channels: 1
