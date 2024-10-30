@@ -10,3 +10,4 @@ batchgenerators
 monai
 ipykernel
 wandb
+nnunet

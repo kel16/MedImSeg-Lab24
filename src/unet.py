@@ -19,9 +19,8 @@ import torch
 from torch import nn
 import lightning as L
 from monai.networks.nets import UNet, SwinUNETR
+from monai.networks.layers.factories import Act, Norm
 from monai.utils import (
-    alias, 
-    export, 
     look_up_option, 
     SkipMode
 )
@@ -160,8 +159,6 @@ class LightningSegmentationModel(L.LightningModule):
 
 
 
-@export("monai.networks.nets")
-@alias("Unet")
 class UNet(nn.Module):
     """
     Enhanced version of UNet which has residual units implemented with the ResidualUnit class.
