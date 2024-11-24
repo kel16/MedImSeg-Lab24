@@ -26,7 +26,7 @@ from monai.utils import (
 )
 from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric, MeanIoU
-
+from monai.networks.blocks import ResidualUnit, Convolution
 
 
 __all__ = ["UNet", "Unet"]
@@ -56,8 +56,9 @@ class LightningSegmentationModel(L.LightningModule):
             sigmoid=True if binary_target else False,
             to_onehot_y=False if binary_target else True,
         )
+        # metrics
         self.dsc = DiceMetric(include_background=False, reduction="none")
-        self.IoU = MeanIoU(include_background=False, reduction="none")
+        self.IoU = MeanIoU(include_background=False, reduction="none") # intersection of the two sets / size(union)
 
     def forward(self, inputs):        
         return self.model(inputs)
@@ -116,8 +117,7 @@ class LightningSegmentationModel(L.LightningModule):
         else:
             outputs = (outputs > 0) * 1
         outputs = torch.nn.functional.one_hot(outputs, num_classes=num_classes).moveaxis(-1, 1)
-        dsc = dice_metric(outputs, target).nanmean()
-
+        dsc = self.dsc(outputs, target).nanmean()
 
         self.log_dict({
             'test_loss': loss,
