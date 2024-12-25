@@ -7,6 +7,7 @@ from unet import LightningSegmentationModel
 
 
 def setup_device(device_location):
+    """ sets up a device globally """
     device = torch.device(device_location if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available() and not device == 'cpu':
         cuda_device = int(device_location.split(":")[1])
@@ -16,6 +17,7 @@ def setup_device(device_location):
 
 
 def setup_datamodule():
+    """ loads and sets up an MNMV2 datamodule """
     mnmv2_config   = OmegaConf.load('../../configs/mnmv2.yaml')
     datamodule = MNMv2DataModule(
         data_dir=mnmv2_config.data_dir,
