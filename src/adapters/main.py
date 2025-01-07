@@ -6,9 +6,16 @@ from adapters.model_adapter import ModelAdapter
 def get_layers(model, limit_layers: int = 0):
     return [layer[0] for layer in model.named_modules() if 'conv' in layer[0]][-limit_layers:]
 
-def capture_conv_layers(model, device: str, input_batch: Tensor, limit_layers: int = 0):
-    """ wraps the model and captures all convolutional layer activations """
+def capture_conv_layers(model, device: str, input_batch: Tensor,
+                        selected_layer_id: int = None, limit_layers: int = 0):
+    """
+    Wraps the model and captures all convolutional layer activations.
+    If given `selected_layer_id`, then returns one layer in an array.
+    """
     conv_layer_names = get_layers(model, limit_layers)
+
+    if selected_layer_id:
+        conv_layer_names = [conv_layer_names[selected_layer_id]]
 
     # create adapters for these layers and wrap them in a wrapper
     adapters = nn.ModuleList(

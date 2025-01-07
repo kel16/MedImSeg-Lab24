@@ -6,6 +6,7 @@ def map_to_rgb(feature_map: np.ndarray):
     return (feature_map - np.min(feature_map, axis=0)) / (np.max(feature_map, axis=0) - np.min(feature_map, axis=0))
 
 def map_to_lab(feature_map: np.ndarray):
+    """ this function does not work """
     # different ranges for channels L, a, b respectively
     ranges = [(0, 100), (-128, 127), (-128, 127)]
 

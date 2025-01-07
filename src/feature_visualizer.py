@@ -1,3 +1,4 @@
+import numpy as np
 import matplotlib.pyplot as plt
 
 DEFAULT_COLOR_MAP = 'viridis'
@@ -5,7 +6,7 @@ DEFAULT_FOLDER_NAME = './output'
 
 class FeatureVisualizer():
     """
-        visualizes feature in a perceptually uniform color space
+        visualizes a feature in a color space
 
         :param transform: function which fits a reduced feature into a certain color space
     """
@@ -16,7 +17,7 @@ class FeatureVisualizer():
     
     def _get_image_path(self, file_name):
         return f'{self.output_folder}/{file_name}'
-
+    
     def get_transform(self):
         return self.transform
 
