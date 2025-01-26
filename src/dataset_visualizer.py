@@ -11,10 +11,11 @@ class DatasetVisualizer():
         self.images = []
 
     def set_data(self, data_batch):
-        images = data_batch.to(self.device)
+        images = data_batch['input'].to(self.device)
 
+        self.targets = data_batch['target'].to(self.device).cpu().detach().numpy()
         self.outputs = self.model(images).cpu().detach().numpy()
-        self.images = images.cpu()
+        self.images = images
     
     def visualize(self, image_idx, layer_idx):
         if len(self.images) == 0:
@@ -25,8 +26,8 @@ class DatasetVisualizer():
             print('IMAGE ID', image_id)
 
             # display the input image
-            plt.imshow(self.images[image_id].permute(1, 2, 0).numpy(), cmap=GRAYSCALE_COLORMAP)
-            plt.title("Input image")
+            plt.imshow(self.targets[image_id].transpose(1, 2, 0), cmap=GRAYSCALE_COLORMAP)
+            plt.title("Target image")
             plt.axis('off')
             plt.show()
 

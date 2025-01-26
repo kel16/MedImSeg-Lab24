@@ -9,13 +9,7 @@ class FeatureAutoencoder(nn.Module):
         super(FeatureAutoencoder, self).__init__()
         print(f"defined an autoencoder with input channels={in_channels} and out channels={out_channels}")
 
-        # Encoder: Compress to 3 channels
-
-        # self.encoder = nn.Sequential(
-        #     nn.Conv2d(in_channels, out_channels, kernel_size=KERNEL_SIZE,
-        #               stride=STRIDE, padding=PADDING_SIZE),
-        #     nn.ReLU(),
-        # )
+        # Encoder: compresses to 3 channels
         self.encoder = nn.Sequential(
             nn.Conv2d(in_channels, 64, kernel_size=KERNEL_SIZE, stride=STRIDE, padding=PADDING_SIZE),
             nn.ReLU(),
@@ -24,13 +18,7 @@ class FeatureAutoencoder(nn.Module):
             nn.Conv2d(32, 3, kernel_size=KERNEL_SIZE, stride=STRIDE, padding=PADDING_SIZE)  # Final 3-channel output
         )
 
-        # Decoder: Reconstruct original channels
-
-        # self.decoder = nn.Sequential(
-        #     nn.Conv2d(out_channels, in_channels, kernel_size=KERNEL_SIZE,
-        #               stride=STRIDE, padding=PADDING_SIZE),
-        #     nn.ReLU(),
-        # )
+        # Decoder: reconstructs original channels
         self.decoder = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=KERNEL_SIZE, stride=STRIDE, padding=PADDING_SIZE),
             nn.ReLU(),
