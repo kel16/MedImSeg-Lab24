@@ -1,40 +1,59 @@
 import torch
-from torch import nn
+from torch import nn, device
+from torch.nn.functional import softmax
+from copy import deepcopy
 # local imports
 from adapters.main import capture_convolution_layers
 
-DEFAULT_LR = 1e-3
+DEFAULT_LR = 1e-5
 
-def replace_layer_activations(device, fake_outputs):
-    def swap_hook(module, input, output):
-        # Replace output with a tensor of ones of the same shape
-        modified_output = fake_outputs
-        return modified_output.to(device)
-    
-    return swap_hook
+class ModelFaker():
+    def __init__(
+        self,
+        model: nn.Module,
+        map_location: device = 'cuda:3',
+        copy: bool = True,
+    ):
+        super().__init__()
+        self.map_location = map_location
+        # to ensure no side effects use a copy of the model for mdifications via hooks
+        model_copy = deepcopy(model) if copy else model
+        model_copy.to(map_location)
+        self.model = model_copy
+        self.model.eval()
+
+    def _replace_layer_activations(self, fake_outputs):
+        def swap_hook(module, input, output):
+            # Replace output with a tensor of ones of the same shape
+            modified_output = fake_outputs
+            
+            return modified_output.to(self.map_location)
+        
+        return swap_hook
 
 
-def get_modified_model_output(model, device, layer_name, inputs, modified_activations):
-    # get the actual layer from the model
-    layer = model.get_submodule(layer_name)
-    
-    adapter_handler = layer.register_forward_hook(replace_layer_activations(device, modified_activations))
-    outputs = model.forward(inputs.to(device))
-    adapter_handler.remove()
+    def get_modified_model_output(self, layer_name, inputs, modified_activations):
+        # get the actual layer from the model
+        layer = self.model.get_submodule(layer_name)
+        
+        adapter_handler = layer.register_forward_hook(self._replace_layer_activations(modified_activations))
+        outputs = self.model.forward(inputs.to(self.map_location))
+        adapter_handler.remove()
 
-    return outputs
+        return outputs
 
-DEFAULT_ALPHA = 1 # controls contribution of an image reconstruction loss
-DEFAULT_BETA = 1 # constrols contribtuion of model swapping loss
+DEFAULT_WEIGHT_IMAGE = 1 # controls contribution of an image reconstruction loss
+DEFAULT_WEIGHT_MODEL = 1 # constrols contribtuion of model swapping loss
 
 def modified_train_dr(autoencoder, datamodule,
              model, device,
              selected_layer_names: [str], num_epochs: int, learning_rate = DEFAULT_LR,
-             alpha = DEFAULT_ALPHA,
-             beta = DEFAULT_BETA,
+             weight_i = DEFAULT_WEIGHT_IMAGE,
+             weight_m = DEFAULT_WEIGHT_MODEL,
              logger = None):
     """ Trains a DR Autoencoder on the whole dataset by modifying intermediate layer
     output and comparing loss """
+    model_fake = ModelFaker(model)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(autoencoder.parameters(), lr=learning_rate)
 
@@ -59,18 +78,27 @@ def modified_train_dr(autoencoder, datamodule,
                 for image, layer_output in zip(inputs, layer_outputs):
                     # forward pass
                     _, reconstructed = autoencoder(layer_output)
-                    image_loss = criterion(reconstructed, layer_output)
-                    
-                    image = image.unsqueeze(0)
-                    # swap the output of this image via hooks for a copy model and get an error
-                    teacher_outputs = model.forward(image.to(device))
-                    modified_output = get_modified_model_output(model, device, layer_name, image, reconstructed.unsqueeze(0))
-                    model_loss = criterion(modified_output, teacher_outputs).cpu()
-                    # balance the sum of losses
-                    total_loss += alpha * image_loss + beta * model_loss
 
-                    sum_image_loss =+ image_loss
-                    sum_model_loss =+ model_loss
+                    # reconstruction loss
+                    reconstructed_norm = softmax(reconstructed, dim=1)
+                    layer_outputs_norm = softmax(layer_output, dim=1)
+                    image_loss = criterion(reconstructed_norm, layer_outputs_norm).cpu()
+                    
+                    # swap the output of this image via hooks for a copied model and get an error
+                    image = image.unsqueeze(0)
+                    teacher_outputs = model.forward(image.to(device))
+                    modified_outputs = model_fake.get_modified_model_output(layer_name, image, reconstructed.unsqueeze(0)).to(device)
+                    # normalize with softmax
+                    teacher_outputs = softmax(teacher_outputs, dim=1)
+                    modified_outputs = softmax(modified_outputs, dim=1)
+
+                    # compute loss
+                    model_loss = criterion(modified_outputs, teacher_outputs).cpu()
+                    total_loss += weight_i * image_loss + weight_m * model_loss
+
+                    # log
+                    sum_image_loss += image_loss
+                    sum_model_loss += model_loss
                 
             if logger:
                 logger({ "batch_image_loss": sum_image_loss.item() })
@@ -88,7 +116,7 @@ def modified_train_dr(autoencoder, datamodule,
         
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/len(layer_output):.4f}")
             
-    return autoencoder
+    return
         
                 
 
