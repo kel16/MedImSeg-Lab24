@@ -17,10 +17,13 @@ class ModelFaker():
         super().__init__()
         self.map_location = map_location
         # to ensure no side effects use a copy of the model for mdifications via hooks
-        model_copy = deepcopy(model) if copy else model
-        model_copy.to(map_location)
-        self.model = model_copy
-        self.model.eval()
+        if copy:
+            model_copy = deepcopy(model)
+            model_copy.to(map_location)
+            self.model = model_copy
+            self.model.eval()
+        else:
+            self.model = model
 
     def _replace_layer_activations(self, fake_outputs):
         def swap_hook(module, input, output):
@@ -56,11 +59,13 @@ def modified_train_dr(autoencoder, datamodule,
     model_fake = ModelFaker(model)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(autoencoder.parameters(), lr=learning_rate)
+    batch_size = datamodule.batch_size
+    layers_count = len(selected_layer_names)
 
     for epoch in range(num_epochs):
         epoch_loss = .0
 
-        for idx, data_batch in enumerate(iter(datamodule.val_dataloader())):
+        for _, data_batch in enumerate(iter(datamodule.val_dataloader())):
             inputs = data_batch['input']
             wrapper, _ = capture_convolution_layers(model, device, inputs, selected_layer_names=selected_layer_names)
             optimizer.zero_grad()
@@ -100,21 +105,28 @@ def modified_train_dr(autoencoder, datamodule,
                     sum_image_loss += image_loss
                     sum_model_loss += model_loss
                 
+            
+            # average out the sums
+            samples_count = (batch_size * layers_count)
+            total_loss /= samples_count
+            sum_image_loss /= samples_count
+            sum_model_loss /= samples_count
+
             if logger:
                 logger({ "batch_image_loss": sum_image_loss.item() })
                 logger({ "batch_model_loss": sum_model_loss.item() })
                 logger({ "batch_train_loss": total_loss.item() })
-
+            
             epoch_loss += total_loss.item()
-            # Backpropagation after all layers at the end of batch
+            # backpropagation after all layers at the end of batch
             total_loss.backward()
-            # Update model parameters using the computed gradients
+            # update model parameters using the computed gradients
             optimizer.step()
 
         if logger:
-            logger({ "epoch_loss": epoch_loss/len(layer_output) })
+            logger({ "epoch_loss": epoch_loss })
         
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/len(layer_output):.4f}")
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}")
             
     return
         
