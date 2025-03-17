@@ -190,6 +190,7 @@ class MNMv2DataModule(L.LightningDataModule):
                 non_empty_target=self.non_empty_target,
                 normalize=True,  # Always normalizing
             )
+            # print(f"THE SIZE OF THE FULL DATASET: {mnm_full.__len__()}")
             # Split using MNMv2Dataset's custom method
             self.mnm_train, self.mnm_val = mnm_full.random_split(val_size=0.1)
 
@@ -218,14 +219,24 @@ class MNMv2DataModule(L.LightningDataModule):
             batch_size=self.batch_size,
             return_orig=False
         )
-        
-        return MultiThreadedAugmenter(
-            data_loader=mnm_train_loader,
-            transform=self.transforms.get_transforms(self.train_transforms),
-            num_processes=4,
-            num_cached_per_queue=2,
-            seeds=None
+
+        return DataLoader(
+            self.mnm_train,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=4,
+            pin_memory=True,
+            drop_last=False  
         )
+        
+        # TODO it runs forever, why?
+        # return MultiThreadedAugmenter(
+        #     data_loader=mnm_train_loader,
+        #     transform=self.transforms.get_transforms(self.train_transforms),
+        #     num_processes=4,
+        #     num_cached_per_queue=2,
+        #     seeds=None
+        # )
 
 
     def val_dataloader(self):

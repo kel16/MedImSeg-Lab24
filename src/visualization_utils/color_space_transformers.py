@@ -7,13 +7,13 @@ def map_to_rgb(feature_map: np.ndarray):
 
 
 def normalize_channel(channel, target_low, target_high, percentile=5):
-        # clip to handle outliers
-        p_low = np.percentile(channel, percentile)
-        p_high = np.percentile(channel, 100 - percentile)
-        clipped = np.clip(channel, p_low, p_high)
-        normalized = (clipped - p_low) / (p_high - p_low) * (target_high - target_low) + target_low
-        
-        return normalized
+    # clip to handle outliers
+    p_low = np.percentile(channel, percentile)
+    p_high = np.percentile(channel, 100 - percentile)
+    clipped = np.clip(channel, p_low, p_high)
+    normalized = (clipped - p_low) / (p_high - p_low) * (target_high - target_low) + target_low
+    
+    return normalized
 
 def map_to_lab(feature_map: np.ndarray):
     """

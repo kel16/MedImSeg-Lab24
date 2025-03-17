@@ -1,73 +1,14 @@
 import time
+from dimensionality_reduction.metrics import get_avg_error
 import torch
-from torch import nn, device
-from copy import deepcopy
+from torch import nn
 # local imports
 from adapters.main import capture_convolution_layers
-
-class ModelFaker():
-    def __init__(
-        self,
-        model: nn.Module,
-        map_location: device = 'cuda:3',
-        copy: bool = True,
-    ):
-        super().__init__()
-        self.map_location = map_location
-        # to ensure no side effects use a copy of the model for modifications via hooks
-        if copy:
-            model_copy = deepcopy(model)
-            model_copy.to(map_location)
-            self.model = model_copy
-            self.model.eval()
-        else:
-            self.model = model
-
-
-    def get_modified_model_output(self, layer_name, inputs, modified_activations):
-        layer = self.model.get_submodule(layer_name)
-
-        def batch_swap_hook(module, input, output):
-            return modified_activations.to(self.map_location)
-        
-        with torch.no_grad():
-            handle = layer.register_forward_hook(batch_swap_hook)
-            outputs = self.model(inputs.to(self.map_location))
-            handle.remove()
-
-        return outputs
-
-# ===========================================================================
+from dimensionality_reduction.model_faker import ModelFaker
 
 DEFAULT_LR = 1e-3
 DEFAULT_WEIGHT_IMAGE = 1 # controls contribution of an image reconstruction loss
 DEFAULT_WEIGHT_MODEL = 1 # constrols contribtuion of model swapping loss
-
-def validate_dr(autoencoder, datamodule, model, device, selected_layer_names):
-    autoencoder.eval() 
-    val_loss = 0.0
-    criterion = nn.MSELoss()
-    # samples_count = len(datamodule.train_dataloader().dataset)
-
-    with torch.no_grad():
-        for batch in datamodule.val_dataloader():
-            inputs = batch['input'].to(device)
-            
-            wrapper, _ = capture_convolution_layers(model, device, inputs, 
-                                                   selected_layer_names=selected_layer_names)
-            
-            batch_loss = 0.0
-            for layer_name in selected_layer_names:
-                layer_outputs = wrapper.layer_activations[layer_name]
-                _, reconstructed = autoencoder(layer_outputs)
-                batch_loss += criterion(reconstructed, layer_outputs)
-
-            val_loss += batch_loss.item() / len(selected_layer_names)
-
-    autoencoder.train()
-    
-    return { "val_loss": val_loss }
-
 
 def modified_train_dr(autoencoder,
                       datamodule,
@@ -110,9 +51,9 @@ def modified_train_dr(autoencoder,
             optimizer.zero_grad()
             # accumulates total loss (image+swap) across layers for this batch
             total_loss = .0
-            # temporarily for logging purpose
-            sum_image_loss = .0
-            sum_model_loss = .0
+            # for logging purpose
+            avg_image_loss = .0
+            avg_model_loss = .0
 
             # go over each layer of selected resolutions
             for layer_name in selected_layer_names:
@@ -134,19 +75,19 @@ def modified_train_dr(autoencoder,
                 total_loss += weight_i * image_loss + weight_m * model_loss
                 
                 # for logging purpose
-                sum_image_loss += image_loss.detach().item()
-                sum_model_loss += model_loss.detach().item()
+                avg_image_loss += image_loss.detach().item()
+                avg_model_loss += model_loss.detach().item()
                 
             # average out the sums
             total_loss /= layers_count
-            sum_image_loss /= layers_count
-            sum_model_loss /= layers_count
+            avg_image_loss /= layers_count
+            avg_model_loss /= layers_count
             
             if logger:
                 logger({
                     "batch_train_loss": total_loss.item(),
-                    "batch_image_loss": image_loss.item(),
-                    "batch_model_loss": model_loss.item(),
+                    "batch_image_loss": avg_image_loss,
+                    "batch_model_loss": avg_model_loss,
                 })
             
             epoch_loss += total_loss.item()
@@ -162,18 +103,18 @@ def modified_train_dr(autoencoder,
               "epoch_time": epoch_time,
             })
         
-        if validate_every_n_epochs:
-            if epoch % validate_every_n_epochs == 0:
-                log_info = validate_dr(autoencoder, datamodule, model, device, selected_layer_names)
-                print(log_info)
-                if logger:
-                    logger(log_info)
-        
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.6f}")
+
+        if validate_every_n_epochs:
+            if (epoch + 1) % validate_every_n_epochs == 0:
+                val_loss = get_avg_error(autoencoder, datamodule.val_dataloader, model, device, selected_layer_names)
+                print(f"Average validation MSE: {val_loss}")
+                if logger:
+                    logger({ "val_loss": val_loss })
         
     return
 
-# ===========================================================================
+# ===============================================================================
 
 def train_dr(autoencoder, datamodule,
              model, device, logger,
@@ -184,7 +125,8 @@ def train_dr(autoencoder, datamodule,
 
     for epoch in range(num_epochs):
         epoch_loss = .0
-        for idx, data_batch in enumerate(iter(datamodule.train_dataloader())):
+
+        for _, data_batch in enumerate(iter(datamodule.train_dataloader())):
             optimizer.zero_grad()
             loss_sum = .0
 
@@ -193,22 +135,21 @@ def train_dr(autoencoder, datamodule,
             # Get activations of `layer_ID` for this `data_batch`
             layer_samples = wrapper.layer_activations[layer_names[0]]
             
-            for image in layer_samples:
-                # Forward pass
-                _, reconstructed = autoencoder(image)
-                loss = criterion(reconstructed, image)
-                loss_sum += loss
+            # Forward pass
+            _, reconstructed_samples = autoencoder(layer_samples)
+            loss_sum += criterion(reconstructed_samples, layer_samples)
+            epoch_loss += loss_sum.item()
             
             if logger:
                 logger({ "train_batch_loss": loss_sum.item() })
 
-            epoch_loss += loss_sum.item()
-            # Backprop
+            # Backpropagation
             loss_sum.backward()
             optimizer.step()
 
         if logger:
-            logger({ "epoch_loss": epoch_loss/len(layer_samples) })
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss/len(layer_samples):.4f}")
+            logger({ "epoch_loss": epoch_loss })
+
+        print(f"Epoch [{epoch + 1}/{num_epochs}], Loss: {epoch_loss:.6f}")
     
     return autoencoder
